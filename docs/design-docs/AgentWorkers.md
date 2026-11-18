@@ -591,11 +591,12 @@ the Run.
 Workspace acquisition immediately reports its current phase—starting, resuming,
 preparing an image, retrying a temporary failure, replacing an instance, or
 waiting for a slot—and the Driver renews Worker demand on each lifecycle wait.
-The first attempt to open a workspace starts a monotonic 60-second acquisition
+The first attempt to open a workspace starts a monotonic 150-second acquisition
 deadline covering transport receipts and `WorkspaceReady`:
 
-- Phase transitions do not reset the 60-second timer; Worker readiness cancels
-  it.
+- Phase transitions do not reset the 150-second timer, except that the Driver
+  restarts it once a Worker leaves `:preparing`, so image preparation does not
+  consume the startup window; Worker readiness cancels it.
 - If a tool batch commits while acquisition is still pending, the next batch
   gets a fresh acquisition and deadline, as does a new Run or Driver restart.
 - Once the deadline expires, that `unavailable` verdict sticks for the remainder
@@ -679,7 +680,7 @@ after release begins:
   fails to become `ready`, clearing the cache once the old instance is gone
   before allocating a new generation. Because this timer counts only time
   observed by the running control-plane node (as an infrastructure health
-  threshold separate from the Driver's 60-second acquisition deadline), a
+  threshold separate from the Driver's 150-second acquisition deadline), a
   prolonged control-plane outage does not trigger mass Worker replacement on
   recovery. Unobserved `starting` generations retry after one minute and are
   never marked `absent` merely because startup is slow.

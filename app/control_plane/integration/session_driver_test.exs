@@ -280,6 +280,9 @@ defmodule Ankole.Sessions.DriverTest do
     # is outside its receipt transaction.
     assert {:ok, %Run{} = replacement} = Admission.admit(key, Repo.reload!(input))
     assert replacement.epoch > old_epoch
+    # The replacement owner holds the Session name. A fenced Driver that still
+    # held it would rebuild and drive the newer attempt itself.
+    :global.unregister_name(Ankole.Sessions.driver_name(key))
     send(tool_pid, :continue_tool)
 
     assert_receive {:DOWN, ^monitor, :process, ^driver, :normal}, 10000
@@ -514,7 +517,7 @@ defmodule Ankole.Sessions.DriverTest do
     refute_receive {:model_request, _}, 100
   end
 
-  @tag timeout: 90000
+  @tag timeout: 200_000
   test(
     "an expired acquisition stays failed through the next model tool round and commits its answer",
     %{key: key, script: script}
@@ -554,8 +557,8 @@ defmodule Ankole.Sessions.DriverTest do
                %{worker_id: key.agent_uid}
              )
 
-    second = await_request(key, 65000)
-    assert System.monotonic_time(:millisecond) - started >= 59000
+    second = await_request_while_busy(key, 155_000)
+    assert System.monotonic_time(:millisecond) - started >= 149_000
     [error] = Enum.filter(second.body["messages"], &(&1["role"] == "tool"))
     assert error["tool_call_id"] == "before-expiry"
     assert error["content"] =~ "busy with other tasks"
@@ -1012,9 +1015,9 @@ defmodule Ankole.Sessions.DriverTest do
     end
   end
 
-  @tag timeout: 90000
+  @tag timeout: 200_000
   test(
-    "a full computer returns every queued call within one real 60 second acquisition deadline",
+    "a full computer returns every queued call within one real 150 second acquisition deadline",
     %{key: key, script: script}
   ) do
     calls =
@@ -1041,9 +1044,9 @@ defmodule Ankole.Sessions.DriverTest do
              )
 
     started = System.monotonic_time(:millisecond)
-    next = await_request(key, 65000)
+    next = await_request_while_busy(key, 155_000)
     elapsed = System.monotonic_time(:millisecond) - started
-    assert elapsed >= 59000 and elapsed < 63000
+    assert elapsed >= 149_000 and elapsed < 153_000
     outputs = Enum.filter(next.body["messages"], &(&1["role"] == "tool"))
     assert length(outputs) == length(calls)
     assert Enum.all?(outputs, &String.contains?(&1["content"], "busy with other tasks"))
@@ -1092,13 +1095,23 @@ defmodule Ankole.Sessions.DriverTest do
     _ = await_request(key)
     assert wait_for_completion(first.id).turn_outcome == "loop_finished"
     assert_receive {:close_pending, closing}, 5000
+    # The conversation already used the computer, so the next turn pre-warms it
+    # while the model streams. Holding the reply keeps that open observable.
+    Agent.update(script, &Map.merge(&1, %{block_first?: true, block_at: 2}))
     started = System.monotonic_time(:millisecond)
     assert {:ok, second} = Ankole.Signals.accept(attrs(key))
     _ = await_request(key, 2000)
     assert System.monotonic_time(:millisecond) - started < 2000
+    assert_receive {:model_waiting, provider}, 5000
+    assert_receive {:actor_lane, %Proto.Envelope{body: {:workspace_open, prewarmed}}}, 5000
+    assert prewarmed.run.signal_id == second.id
+    send(provider, :release_model)
     assert wait_for_completion(second.id).turn_outcome == "loop_finished"
     assert Process.alive?(closing)
     send(closing, :release_close)
+    # The unused pre-warmed workspace closes in the background as well.
+    assert_receive {:close_pending, unused}, 5000
+    send(unused, :release_close)
     refute_receive {:actor_lane, _}, 100
   end
 
@@ -1110,13 +1123,45 @@ defmodule Ankole.Sessions.DriverTest do
     on_exit(fn -> WorkerRoute.unregister_local_worker(route) end)
     assert {:ok, _} = RuntimeCase.admit_worker(route, %{worker_id: key.agent_uid})
 
+    # The first turn installs the new tenant's bundled Skills before its request.
     for _ <- 1..2 do
       assert {:ok, event} = Ankole.Signals.accept(attrs(key))
-      _ = await_request(key, 2000)
+      _ = await_request(key)
       assert wait_for_completion(event.id).turn_outcome == "loop_finished"
     end
 
     refute_receive {:actor_lane, _}, 100
+  end
+
+  # The Driver re-checks a waiting acquisition every 60 seconds and opens the
+  # workspace again; a computer that stays full answers each open the same way.
+  defp await_request_while_busy(key, timeout) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    await_request_while_busy(key, deadline, :loop)
+  end
+
+  defp await_request_while_busy(key, deadline, :loop) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {:model_request, request} ->
+        request
+
+      {:actor_lane, %Proto.Envelope{body: {:workspace_open, opened}}} ->
+        assert :ok =
+                 SessionLane.handle(
+                   %Proto.Envelope{
+                     body:
+                       {:workspace_ready,
+                        %Proto.WorkspaceReady{run: opened.run, reason: :CAPACITY}}
+                   },
+                   %{worker_id: key.agent_uid}
+                 )
+
+        await_request_while_busy(key, deadline, :loop)
+    after
+      remaining -> await_request(key, 0)
+    end
   end
 
   defp complete_worker_call(key, call) do
@@ -1413,7 +1458,7 @@ defmodule Ankole.Sessions.DriverTest do
     repair = await_request(key)
 
     expected =
-      ~w(create_background_job send_message_to_background_job show_background_job_details stop_background_job sleep submit_result web_fetch)
+      ~w(create_background_job list_background_job_devices send_message_to_background_job show_background_job_details stop_background_job sleep submit_result web_fetch)
 
     names = Enum.map(first.body["tools"], &get_in(&1, ["function", "name"]))
     assert Enum.all?(expected, &(&1 in names)), inspect(names)
@@ -3274,7 +3319,12 @@ defmodule Ankole.Sessions.DriverTest do
                %{worker_id: key.agent_uid}
              )
 
-    assert_receive {:DOWN, ^monitor, :process, ^driver, :normal}, 5000
+    # The Driver still owns the Session, so it abandons the closed run, closes
+    # its workspace, and rebuilds to idle instead of exiting.
+    assert_receive {:actor_lane, %Proto.Envelope{body: {:workspace_close, closed}}}, 5000
+    assert closed.run == call.run
+    assert eventually(fn -> match?({:idle, _}, :sys.get_state(driver)) end)
+    refute_received {:DOWN, ^monitor, :process, ^driver, _}
 
     assert Repo.all(from(m in Message, where: m.subject_uid == ^key.agent_uid, select: m.id)) ==
              before_history
@@ -3598,6 +3648,9 @@ defmodule Ankole.Sessions.DriverTest do
         :ok = :telemetry.detach({__MODULE__, :blocked_worker_resolve, event.id})
       end
 
+      # The blocked task already runs inside the old handler; later opens reach the test.
+      :ok = WorkerRoute.register_local_worker(route, self())
+
       # The preserved Worker can replay this result before a new workspace
       # request has finished. It must never execute the command a second time.
       complete_worker_call(key, original)
@@ -3609,15 +3662,25 @@ defmodule Ankole.Sessions.DriverTest do
                &(&1["role"] == "tool" and &1["content"] == "done")
              )
 
-      assert {:requesting_model, %{turn: %{acquisition: {:idle, :requested}}}} =
+      # The committed round left acquisition requested, so the next model
+      # request resumes it alongside the stream with a fresh deadline.
+      assert {:requesting_model, %{turn: %{acquisition: {:opening, :starting, _, _}}}} =
                :sys.get_state(driver)
 
       refute Process.alive?(acquisition_task)
-      :ok = WorkerRoute.register_local_worker(route, self())
+      assert_receive {:actor_lane, %Proto.Envelope{body: {:workspace_open, reopened}}}, 5_000
+      assert reopened.run == original.run
       send(provider, :release_model)
 
       if unquote(continuation) == :tool do
-        ready_workspace(key)
+        assert :ok =
+                 SessionLane.handle(
+                   %Proto.Envelope{
+                     body: {:workspace_ready, %Proto.WorkspaceReady{run: reopened.run}}
+                   },
+                   %{worker_id: key.agent_uid}
+                 )
+
         assert_receive {:actor_lane, %Proto.Envelope{body: {:tool_call, later}}}, 5_000
         assert later.call_id == "after-recovery"
         assert later.name == "read_file"
@@ -3972,7 +4035,9 @@ defmodule Ankole.Sessions.DriverTest do
 
     job_key = %{key | session_id: Ankole.BackgroundAgentJobs.job_session_id(job.id)}
     assert {:ok, driver} = Ankole.Sessions.ensure_driver(job_key)
-    assert_receive {:actor_lane, %Proto.Envelope{body: {:turn_start, start}}}, 2000
+    # The first admission resolves the runtime catalog, which installs the new
+    # tenant's bundled Skills before the Worker receives the turn.
+    assert_receive {:actor_lane, %Proto.Envelope{body: {:turn_start, start}}}, 10_000
     {job, event, job_key, driver, start}
   end
 

@@ -8,7 +8,6 @@ defmodule Ankole.Observability do
   """
 
   use GenServer
-  require Ash.Query
 
   import Ankole.Observability.Trace,
     only: [
@@ -530,10 +529,7 @@ defmodule Ankole.Observability do
   defp fetch_conversation(conv_id) do
     with tenant_id when is_binary(tenant_id) <- Repo.tenant_id(),
          {:ok, uuid} <- Ecto.UUID.cast(conv_id),
-         {:ok, conv} <-
-           Conversation
-           |> Ash.Query.filter(id == ^uuid)
-           |> Ankole.Ash.read_one() do
+         {:ok, conv} <- Ankole.Conversations.get_conversation(uuid) do
       conv
     else
       _other -> nil

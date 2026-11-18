@@ -163,7 +163,9 @@ defmodule AnkoleWeb.SetupControllerTest do
         "packs" => ["legal"]
       })
 
-    assert api_error(conn, 422)
+    assert %{"code" => "invalid_attribute", "source" => %{"pointer" => "/data/attributes/slug"}} =
+             api_error(conn, 400)
+
     assert {:ok, unchanged} = Ankole.Tenants.get(tenant.id)
     assert unchanged.display_name == tenant.display_name
     assert unchanged.slug == tenant.slug

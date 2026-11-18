@@ -2,7 +2,7 @@ defmodule Ankole.Brain.Knowledge do
   @moduledoc "Indexes live Pod content and derives permission-filtered knowledge panels."
   require Ash.Query
   alias Ankole.Brain.{Access, Chunks, Links, Objects}
-  alias Ankole.Brain.Schemas.{Claim, Chunk, Link, SlugAlias, Timeline}
+  alias Ankole.Brain.Schemas.{Claim, Chunk, Link, Page, SlugAlias, Timeline}
   alias Ankole.Pod.Pages.Tree, as: Nodes
 
   def page_learning(%{type: type, is_root: false} = page)
@@ -48,14 +48,17 @@ defmodule Ankole.Brain.Knowledge do
 
   def indexable?(page) do
     with {:ok, node} <- Nodes.fetch(page.id), {:ok, path} <- Nodes.path(node) do
-      public? = is_nil(hd(path).private_owner_uid) and is_nil(hd(path).conversation_id)
-
-      public? and Enum.all?(path, &is_nil(&1.deleted_at)) and
-        node.type in [:knowledge, :doc, :base, :applet, :file] and not node.is_root and
-        not Enum.any?(path, &(&1.system_key == "ankole_brain_sources"))
+      indexable_location?(path) and node.type in [:knowledge, :doc, :base, :applet, :file] and
+        not node.is_root
     else
       _ -> false
     end
+  end
+
+  defp indexable_location?(path) do
+    is_nil(hd(path).private_owner_uid) and is_nil(hd(path).conversation_id) and
+      Enum.all?(path, &is_nil(&1.deleted_at)) and
+      not Enum.any?(path, &(&1.system_key == "ankole_brain_sources"))
   end
 
   def extractable?(%{meta: %{"role" => "synthesis"}}), do: false
@@ -114,11 +117,14 @@ defmodule Ankole.Brain.Knowledge do
   end
 
   defp reindex_in_tx(id) do
+    with {:ok, knowledge} <- Objects.get_by_slug(id), do: reindex_loaded_in_tx(knowledge)
+  end
+
+  defp reindex_loaded_in_tx(knowledge) do
     # Clearing an emptied page removes its timelines, so it precedes the chunks.
-    with {:ok, knowledge} <- Objects.get_by_slug(id),
-         :ok <- learn_in_tx(knowledge),
+    with :ok <- learn_in_tx(knowledge),
          {:ok, _} <- Chunks.reconcile_locked_in_tx(knowledge),
-         {:ok, _} <- Links.reconcile_object_links_in_tx(id),
+         {:ok, _} <- Links.reconcile_object_links_in_tx(knowledge),
          do: {:ok, knowledge}
   end
 
@@ -147,28 +153,35 @@ defmodule Ankole.Brain.Knowledge do
 
   def page_moved_in_tx(id, old_path) do
     with {:ok, node} <- Nodes.fetch(id), {:ok, path} <- Nodes.path(node) do
-      new_path = path |> Enum.reject(&is_nil(&1.parent_id)) |> Enum.map_join("/", & &1.name)
       old_brain_path = brain_path(old_path)
 
-      descendants(id)
-      |> Enum.each(fn page_id ->
-        case Objects.get_by_slug(page_id) do
-          {:ok, page} ->
-            if old_brain_path do
-              previous = String.replace_prefix(page.slug, new_path, old_brain_path)
-              :ok = record_previous_path(page, previous)
-            end
-
-            {:ok, _} = Nodes.lock(page.id)
-            {:ok, _} = reindex_in_tx(page.id)
-
-          {:error, :not_found} ->
-            :ok
-        end
-      end)
+      # Below a private, trashed, or source location every descendant stays out
+      # of the index, so a move between two such locations changes no Brain state.
+      if old_brain_path || indexable_location?(old_path) || indexable_location?(path),
+        do: reindex_moved_in_tx(id, path, old_brain_path)
 
       :ok
     end
+  end
+
+  # Each Brain page read walks the tenant's Page tree, so the moved subtree's
+  # pages are locked one by one and then read together in one walk.
+  defp reindex_moved_in_tx(id, path, old_brain_path) do
+    new_path = path |> Enum.reject(&is_nil(&1.parent_id)) |> Enum.map_join("/", & &1.name)
+    ids = descendants(id)
+    Enum.each(ids, fn node_id -> {:ok, _} = Nodes.lock(node_id) end)
+
+    Page
+    |> Ash.Query.filter(id in ^ids)
+    |> Ankole.Ash.read!()
+    |> Enum.each(fn page ->
+      if old_brain_path do
+        previous = String.replace_prefix(page.slug, new_path, old_brain_path)
+        :ok = record_previous_path(page, previous)
+      end
+
+      {:ok, _} = reindex_loaded_in_tx(page)
+    end)
   end
 
   @doc "Returns a Brain-relative path only for descendants of the canonical namespace."

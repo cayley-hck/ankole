@@ -433,33 +433,25 @@ defmodule AnkoleWeb.WorkerChannelTest do
       assert_push "reply", {:binary, _bytes}, 1_000
     end
 
-    test "a response route failure returns RPC credit for subsequent requests", ctx do
-      {socket, route} = join!(ctx)
+    test "a replaced stored route still answers on the originating channel and returns RPC credit",
+         ctx do
+      {socket, _route} = join!(ctx)
 
       from(worker in AgentWorker, where: worker.agent_uid == ^ctx.worker_id)
       |> Repo.update_all(set: [transport_route: "replaced-route"])
 
+      # InboundDispatcher answers on the channel that sent the request, without
+      # PostgreSQL route fencing. The test limit is two in-flight RPCs, so the
+      # third request is accepted only if each reply returned its slot.
       for seq <- 1..3 do
         id = "stale-#{seq}"
         ref = push(socket, "durable", {:binary, sealed(rpc_request_envelope(id), :durable, seq)})
         assert_reply ref, :ok, %{"acked_seq" => ^seq}, 1_000
         assert_push "reply", {:binary, bytes}, 1_000
-        assert {:ok, %{body: {:rpc_error, error}}} = RuntimeFabric.decode_and_validate(bytes)
-        assert error.request_id == id
-        assert error.code == "rpc_request_failed"
+
+        assert {:ok, %{body: {:rpc_response, %{request_id: ^id}}}} =
+                 RuntimeFabric.decode_and_validate(bytes)
       end
-
-      from(worker in AgentWorker, where: worker.agent_uid == ^ctx.worker_id)
-      |> Repo.update_all(set: [transport_route: route])
-
-      ref =
-        push(socket, "durable", {:binary, sealed(rpc_request_envelope("recovered"), :durable, 4)})
-
-      assert_reply ref, :ok, %{"acked_seq" => 4}, 1_000
-      assert_push "reply", {:binary, bytes}, 1_000
-
-      assert {:ok, %{body: {:rpc_response, %{request_id: "recovered"}}}} =
-               RuntimeFabric.decode_and_validate(bytes)
     end
 
     test "credits recover as messages complete and the cumulative sequence advances", ctx do

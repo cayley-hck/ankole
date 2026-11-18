@@ -108,11 +108,10 @@ defmodule Ankole.Files.PathBidiTest do
     assert normalized["path"] == "sent/报价单_fdp.sh"
     assert normalized["name"] == "报价单_fdp.sh"
 
-    unicode_path = "sent/e\u0301.txt"
-
-    assert {:ok, %{"path" => ^unicode_path}} =
+    # Files.normalize_path/1 returns the NFC form so NFD and NFC paths reach the same node.
+    assert {:ok, %{"path" => "sent/\u00E9.txt"}} =
              Attachment.normalize_attachment(%{
-               "path" => unicode_path,
+               "path" => "sent/e\u0301.txt",
                "object_id" => object_id,
                "node_id" => node_id,
                "name" => "é.txt",

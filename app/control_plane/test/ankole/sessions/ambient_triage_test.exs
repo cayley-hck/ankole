@@ -52,7 +52,7 @@ defmodule Ankole.Sessions.AmbientTriageTest do
 
     refute Repo.exists?(SessionWorkspace)
     refute Repo.exists?(ModelConversation)
-    assert {:ok, run} = Admission.admit(key, event)
+    assert {:ok, run} = Admission.admit(key, event, now: event.available_at)
     assert run.epoch == 1
     assert Repo.get!(SessionWorkspace, run.workspace_id).epoch == 1
     assert Repo.aggregate(ModelConversation, :count) == 1

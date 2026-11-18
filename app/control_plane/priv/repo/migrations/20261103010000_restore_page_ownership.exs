@@ -214,7 +214,7 @@ defmodule Ankole.Repo.Migrations.RestorePageOwnership do
                   Enum.find(Ankole.Brain.Config.definitions(), &(&1.key == "brain.chunking")).default_value
               )
 
-            {:ok, _} = Ankole.Brain.Links.reconcile_object_links_in_tx(page.id)
+            {:ok, _} = Ankole.Brain.Links.reconcile_object_links_in_tx(page)
           end)
 
           chunking =

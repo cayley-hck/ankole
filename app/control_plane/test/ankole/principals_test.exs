@@ -20,7 +20,7 @@ defmodule Ankole.PrincipalsTest do
                  job_title: " Research Lead "
                })
 
-      assert principal.uid == "alice@example.com"
+      assert principal.uid == "alice"
       assert principal.type == :human
       assert principal.status == :active
       assert principal.display_name == "Alice"

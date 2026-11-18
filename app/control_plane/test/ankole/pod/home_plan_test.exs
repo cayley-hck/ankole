@@ -369,7 +369,9 @@ defmodule Ankole.Pod.HomePlanTest do
     assert Repo.get!(PageContent, page.id).content ==
              "<page><p>首段</p><p>中文😁术语</p><h2>接口规范</h2></page>"
 
-    assert {:error, {:revision_conflict, 3}} = Documents.append(actor, page.id, 2, "<page />")
+    # An append rebases onto a stale base revision but rejects one the page has not reached.
+    assert {:ok, %{page: %{revision: 3}}} = Documents.append(actor, page.id, 2, "<page />")
+    assert {:error, {:revision_conflict, 3}} = Documents.append(actor, page.id, 4, "<page />")
     assert {:ok, %{page: %{revision: 3}}} = Documents.append(actor, page.id, 3, "<page />")
 
     assert {:error, :invalid_request} =

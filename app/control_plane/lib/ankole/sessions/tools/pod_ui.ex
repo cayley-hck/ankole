@@ -91,9 +91,11 @@ defmodule Ankole.Sessions.Tools.PodUI do
   def declarations, do: Enum.map(@declarations, &declaration/1)
 
   # Only a turn that works for a Human has a person whose Pod tab it can operate.
+  # A scheduled turn declares the same tools as the Main turns of its conversation,
+  # so both keep one cached prompt prefix.
   @impl true
   def declarations(run),
-    do: if(run.kind == :main and human_uid(run), do: declarations(), else: [])
+    do: if(run.kind in [:main, :scheduled] and human_uid(run), do: declarations(), else: [])
 
   defp declaration(spec) do
     spec
@@ -102,7 +104,7 @@ defmodule Ankole.Sessions.Tools.PodUI do
       "receipt" => "durable",
       "destructive" => false,
       "execution_mode" => "sequential",
-      "run_kinds" => ["main"]
+      "run_kinds" => ["main", "scheduled"]
     })
   end
 

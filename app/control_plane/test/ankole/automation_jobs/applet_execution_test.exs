@@ -109,6 +109,8 @@ defmodule Ankole.AutomationJobs.AppletExecutionTest do
     job(ctx)
     run = enqueue(ctx, "busy")
     active = Ankole.FunctionRuntimeHelpers.saturate()
+    # Creating the Job cached the inspection; a cache miss must reach the busy runtime.
+    Ankole.FunctionRuntime.AppletClient.clear_inspect_cache()
 
     try do
       assert {:snooze, delay} = execute(run.id)

@@ -430,7 +430,11 @@ renders the Auth SPA HTML shell carrying `<meta name="ankole-auth-error">`
 structured JSON), and the browser replaces `/sessions/oidc/*` in `history` to
 strip single-use `?code=&state=` parameters so refreshing or retrying starts a
 clean sign-in flow. Unmatched browser paths likewise render a themed `404`
-screen in the Auth and Pod SPAs.
+screen in the Auth and Pod SPAs, while a client that does not accept HTML
+receives the router's plain `404`. When a request reaches the fixed
+`/site-admin-console` route without passing through the configured Console
+mount, `SpaController` answers it exactly as it answers an unmatched path, so
+no response reveals where the Console is mounted.
 
 Hourly OIDC cleanup uses a single cutoff timestamp across all tenants: it first
 deletes expired inbound `AuthorizationRequest` rows per tenant, and then calls

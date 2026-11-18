@@ -1,5 +1,39 @@
 # Changelog
 
+## Version 2.0.0-alpha.181 (2026-11-18)
+
+- Let operators set model profiles for the Ankole Applets system service. A
+  database check rejected its `system:ankole_applets` configuration scope. Run
+  `mix ecto.migrate` when upgrading.
+- Show the identity provider's own credential rejection during setup OIDC
+  authorization instead of a generic server error.
+- Return `404` instead of `406` to clients that do not accept HTML on unknown
+  paths. The fixed Site Admin Console route outside its configured mount now
+  answers exactly like an unknown path, so the 404 page no longer reveals where
+  the Console is mounted.
+- Move or rename a large private folder in a Pod (10,000 items) in well under a
+  second. The move no longer reindexes every item for Brain when neither
+  location can be indexed, and otherwise reads the moved items' Brain pages in
+  one query.
+- Convert a Base table with tens of thousands of records to physical storage
+  again, for example by adding a link field. Each 500-record batch now reads
+  through the primary key instead of rescanning the remaining records, so the
+  conversion no longer hits the schema-write deadline.
+- Write streamed objects, such as database CSV exports saved to a Pod, in
+  chunks of up to 8 MiB instead of one native write per row. ClickHouse exports
+  now report the server's own timeout instead of `database_unavailable`.
+- Accept inbound IM batches that quote a message with stored attachments. They
+  failed with a lock-order error because the batch did not take the Page tree
+  lock before filing the quoted attachments.
+- Keep compacting a conversation that grows past its limit after a
+  sealed-history recovery checkpoint, instead of treating that small
+  checkpoint as an unproductive compaction.
+- Offer the Pod page tools (`pod_ui_snapshot`, `pod_ui_query`, `pod_ui_act`)
+  to scheduled turns too, so a checkback wakeup keeps the same tool list and
+  prompt cache prefix as the Main turns of its conversation.
+- Let the 1.x upgrade create Brain namespaces on a database that does not yet
+  have later tenant columns.
+
 ## Version 2.0.0-alpha.180 (2026-11-18)
 
 - Internal changes only.

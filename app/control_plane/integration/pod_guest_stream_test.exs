@@ -50,7 +50,15 @@ defmodule Ankole.Pod.GuestStreamIntegrationTest do
     assert initial =~ "HTTP/1.1 200"
     assert initial =~ "text/event-stream"
 
-    {:ok, false} = AppConfigure.put_tenant_by_key("pod.allow_external_guests", false)
+    admin = Ankole.PrincipalsFixtures.human_fixture().principal
+    {:ok, settings} = Ankole.Principals.PodAdministration.settings()
+
+    {:ok, _} =
+      Ankole.Principals.PodAdministration.update_settings(
+        Ankole.AuthZ.Actor.new(admin),
+        %{settings | allowExternalGuests: false}
+      )
+
     :ok = Conversations.Events.publish_status(detail.conversation.id)
 
     final = receive_closed(socket)

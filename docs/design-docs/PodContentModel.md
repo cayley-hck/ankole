@@ -1744,10 +1744,13 @@ concurrent edit follows its cell or paragraph. Undo changes the author's own wor
 while preserving received edits.
 
 Agents use the same authorized document commit owner through the Pod tool RPC.
-Whole-document writes and appends require the revision that the Agent read. On a
-revision conflict, the Agent reads the current document before submitting revised
-work. The server publishes an accepted write as an incremental ChangeSet for open
-editors, which transform pending Human edits over it.
+Whole-document writes require the revision that the Agent read. On a revision
+conflict, the Agent reads the current document before submitting revised work.
+Because an append only adds blocks at the end, the control plane rebases it onto
+the current revision when its base revision is at most 1,000 revisions behind,
+and rejects a base revision that the page has not reached. The server publishes
+an accepted write as an incremental ChangeSet for open editors, which transform
+pending Human edits over it.
 For an incremental write, the browser keeps unconfirmed text once as it
 incorporates the committed changes and submits its rebased batch through the
 collaboration session.
@@ -2090,13 +2093,15 @@ current revision unchanged.
 
 Two higher-level Agent commands build on the same revision check and diff path.
 `pages.append` sends a Markdown fragment that the control plane parses on its
-own and appends at `base_revision`; knowledge pages reject it. `pages.patch`
-runs in the Worker CLI bridge: the bridge reads the document, fails if its
-revision differs from `base_revision`, applies exact string replacements to the
-anchored Markdown, and submits the result as `pages.write` against that
-revision. The bridge rejects the patch if a target string is missing or matches
-multiple locations without `replace_all`, and the control plane returns a
-revision conflict on any concurrent commit.
+own and appends to the current revision under the rebase rule above; knowledge
+pages reject it. `pages.patch` runs in the Worker CLI bridge: the bridge reads
+the document, applies exact string replacements to the anchored Markdown, and
+submits the result as `pages.write` against the revision it read. The bridge
+rejects the patch if a target string is missing or matches multiple locations
+without `replace_all`. When the document has moved past `base_revision`, or
+`pages.write` returns a revision conflict, the bridge rereads the document and
+rebases the patch up to three times, applying each edit only where its target
+string matches exactly once; otherwise it returns the revision conflict.
 
 ### Realtime socket, OT batches, and IME composition
 
@@ -2226,8 +2231,10 @@ for the tab's whole lifetime. An Agent operates the Pod page that the Human it
 works for has open through three tools: `pod_ui_snapshot` lists the page's
 controls, `pod_ui_query` finds controls and list items, and `pod_ui_act` runs
 ordered steps such as `setValue` or `press`. `Sessions.Tools.PodUI` offers the
-tools only to a Main turn whose current input carries Human work authorization,
-and that Human is the one whose tab runs the operation. A sidebar row is a
+tools only to a Main or scheduled turn whose current input carries Human work
+authorization, and that Human is the one whose tab runs the operation. A
+scheduled turn gets the same tools as the Main turns of its conversation, so
+both keep one cached prompt prefix. A sidebar row is a
 ui-sdk button even when it renders a link, so the Agent moves between
 conversations and pages by pressing the row. The bridge reports only ui-sdk
 controls, so a plain link inside a page's content is outside the Agent's reach.

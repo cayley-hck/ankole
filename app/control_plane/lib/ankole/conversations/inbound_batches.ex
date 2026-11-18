@@ -126,9 +126,25 @@ defmodule Ankole.Conversations.InboundBatches do
   defp entries_have_unmirrored_attachments?(_entries), do: false
 
   defp entry_has_unmirrored_attachments?(entry) when is_map(entry),
-    do: entry["mirrored"] in [nil, false] and (entry["attachments"] || []) != []
+    do:
+      (entry["mirrored"] in [nil, false] and (entry["attachments"] || []) != []) or
+        reply_has_unscoped_attachments?(entry["reply_to"])
 
   defp entry_has_unmirrored_attachments?(_entry), do: false
+
+  # A quoted entry carries the observing binding's attachment snapshot, which
+  # `Attachments.prepare_payload_in_tx/2` files into the conversation root.
+  defp reply_has_unscoped_attachments?(%{} = reply) do
+    Enum.any?(List.wrap(reply["attachments"]), fn
+      %{"object_id" => object_id} = attachment when is_binary(object_id) ->
+        not is_binary(attachment["node_id"])
+
+      _attachment ->
+        false
+    end) or reply_has_unscoped_attachments?(reply["reply_to"])
+  end
+
+  defp reply_has_unscoped_attachments?(_reply), do: false
 
   @spec entry_snapshot(String.t(), String.t(), String.t(), String.t()) :: map() | nil
   def entry_snapshot(

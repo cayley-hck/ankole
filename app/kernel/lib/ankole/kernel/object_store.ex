@@ -84,8 +84,9 @@ defmodule Ankole.Kernel.ObjectStore do
   @doc """
   Writes an Enumerable of binaries and returns its SHA-256 and byte size after close.
 
-  The calling process consumes the source once, waiting for each native write
-  before requesting another chunk. Source exceptions propagate; cancellation,
+  The calling process consumes the source once, collects small binaries into
+  native writes of up to 8 MiB, and waits for each native write before
+  requesting more of the source. Source exceptions propagate; cancellation,
   errors, and owner exit abort the writer. Backends without multipart support
   buffer the object in native memory.
   """
@@ -107,17 +108,36 @@ defmodule Ankole.Kernel.ObjectStore do
     end
   end
 
+  # Each native write is a round trip, so small source binaries (such as CSV
+  # rows) collect into one pending write of up to @write_chunk_bytes.
   defp write_chunks(writer, source) do
-    Enum.reduce_while(source, {:ok, :crypto.hash_init(:sha256), 0}, fn
-      bytes, {:ok, digest, size} when is_binary(bytes) ->
-        case write_chunk(writer, bytes) do
-          :ok -> {:cont, {:ok, :crypto.hash_update(digest, bytes), size + byte_size(bytes)}}
-          {:error, _} = error -> {:halt, error}
+    source
+    |> Enum.reduce_while({:ok, :crypto.hash_init(:sha256), 0, [], 0}, fn
+      bytes, {:ok, digest, size, pending, pending_size} when is_binary(bytes) ->
+        pending = [pending | bytes]
+        pending_size = pending_size + byte_size(bytes)
+        digest = :crypto.hash_update(digest, bytes)
+        size = size + byte_size(bytes)
+
+        if pending_size < @write_chunk_bytes do
+          {:cont, {:ok, digest, size, pending, pending_size}}
+        else
+          case write_chunk(writer, IO.iodata_to_binary(pending)) do
+            :ok -> {:cont, {:ok, digest, size, [], 0}}
+            {:error, _} = error -> {:halt, error}
+          end
         end
 
       _, _ ->
         raise ArgumentError, "object store streams must yield binaries"
     end)
+    |> case do
+      {:ok, digest, size, pending, _pending_size} ->
+        with :ok <- write_chunk(writer, IO.iodata_to_binary(pending)), do: {:ok, digest, size}
+
+      error ->
+        error
+    end
   end
 
   defp write_chunk(_writer, ""), do: :ok

@@ -209,7 +209,9 @@ defmodule Ankole.AIGateway.Compaction do
     with {[%Message{type: :checkpoint, metadata: %{} = metadata}], _post_rows} <-
            CompactionHistory.split_last_compaction(history),
          true <- Map.get(metadata, "auto") == true and is_map(Map.get(metadata, "summarizer")),
-         before_tokens when is_integer(before_tokens) and before_tokens > 0 <-
+         # A checkpoint written below the size trigger, such as a sealed-state
+         # recovery, says nothing about whether compaction can shrink this history.
+         before_tokens when is_integer(before_tokens) and before_tokens > threshold.tokens <-
            prior_compaction_baseline_tokens(metadata),
          first_post_tokens when first_post_tokens > threshold.tokens <-
            CompactionHistory.first_post_checkpoint_usage_tokens(history),

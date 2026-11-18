@@ -38,6 +38,8 @@ defmodule Ankole.Pod.Bases.Promote do
     end
   end
 
+  # `ORDER BY r.id` names the uuid key; a bare `id` would sort the text output
+  # column, which defeats the primary key and rescans every row per chunk.
   def records(id) do
     tenant_id = Repo.tenant_id!()
 
@@ -56,7 +58,7 @@ defmodule Ankole.Pod.Bases.Promote do
                  SELECT id::text, (to_jsonb(r)-'tenant_id'-'table_id'-'data_bytes')::text
                  FROM base_records r
                  WHERE tenant_id=$1::text::uuid AND table_id=$2::text::uuid
-                 ORDER BY id ASC
+                 ORDER BY r.id ASC
                  LIMIT $3
                  """,
                  [tenant_id, id, @chunk_size]
@@ -67,7 +69,7 @@ defmodule Ankole.Pod.Bases.Promote do
                  SELECT id::text, (to_jsonb(r)-'tenant_id'-'table_id'-'data_bytes')::text
                  FROM base_records r
                  WHERE tenant_id=$1::text::uuid AND table_id=$2::text::uuid AND id > $3::text::uuid
-                 ORDER BY id ASC
+                 ORDER BY r.id ASC
                  LIMIT $4
                  """,
                  [tenant_id, id, after_id, @chunk_size]

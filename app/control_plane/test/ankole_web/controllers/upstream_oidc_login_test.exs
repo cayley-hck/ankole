@@ -137,15 +137,15 @@ defmodule AnkoleWeb.UpstreamOIDCLoginTest do
       stub_upstream(upstream["nonce"], proof)
 
       conn = callback(conn, upstream)
-      body = json_response(conn, 400)
 
       expected_error =
         case @error do
-          :subject_mismatch -> ":oidc_subject_mismatch"
-          reason -> inspect({:invalid_id_token, reason})
+          :subject_mismatch -> "oidc_subject_mismatch"
+          _reason -> "invalid_id_token"
         end
 
-      assert body["error"] == expected_error
+      assert html_response(conn, 400) =~
+               ~s(<meta name="ankole-auth-error" content="#{expected_error}">)
 
       assert WebSession.oauth_session(conn) == nil
       assert Repo.aggregate(Ankole.Principals.Principal, :count) == count

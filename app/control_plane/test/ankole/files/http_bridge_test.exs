@@ -328,7 +328,7 @@ defmodule Ankole.Files.HTTPBridgeTest do
                  %{}
                )
 
-      assert {:error, :read_only_route} =
+      assert {:error, %{code: "read_only_route", request_sent: false, retryable: false}} =
                Ankole.Connectors.Gateway.request(
                  {:skill, mode, "demo"},
                  %{

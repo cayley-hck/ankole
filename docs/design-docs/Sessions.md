@@ -493,7 +493,9 @@ sends no Worker messages at all.
 `stale_driver` and `run_closed` are control outcomes rather than tool errors.
 Every asynchronous task forwards them straight to the Driver's stop path, so a
 fenced tool task never converts them into a model-visible error or starts the
-next call in its round.
+next call in its round. A Driver that no longer holds the Session's name exits,
+whereas one that still holds it abandons the run, closes any workspace it
+opened, and rebuilds from the queue.
 
 When an Ash tool raises an unexpected error, Ankole returns a generic error
 message to the model and formats diagnostic logs through

@@ -19,6 +19,10 @@ defmodule AnkoleWeb.Router do
     plug :private_response
   end
 
+  pipeline :html_page do
+    plug :html_page_or_no_route
+  end
+
   pipeline :session_api do
     # Setup, authentication, and Console JSON requests share cookie and CSRF protection.
     # The v2 Console API uses the JSON:API media type.
@@ -286,8 +290,6 @@ defmodule AnkoleWeb.Router do
     # The OIDC redirect lands here as a top-level browser navigation (not via the
     # SPA), so it carries the session cookie holding the pending OIDC state.
     get "/sessions/oidc/:provider_id/callback", AuthController, :oidc_callback
-    get "/site-admin-console", SpaController, :console
-    get "/site-admin-console/*path", SpaController, :console
     get "/settings", SpaController, :pod
     get "/connectors", SpaController, :pod
     get "/jobs", SpaController, :pod
@@ -302,7 +304,28 @@ defmodule AnkoleWeb.Router do
     get "/meta/*path", SpaController, :pod
     get "/setup", SpaController, :setup
     get "/setup/*path", SpaController, :setup
+  end
+
+  # Unknown pages and the Console route reached outside its configured mount give
+  # HTML clients the SPA's 404 screen and other clients the router's plain 404,
+  # so no response reveals where the Console is mounted.
+  scope "/", AnkoleWeb do
+    pipe_through [:html_page, :browser]
+
+    get "/site-admin-console", SpaController, :console
+    get "/site-admin-console/*path", SpaController, :console
     get "/*path", SpaController, :not_found
+  end
+
+  defp html_page_or_no_route(conn, _opts) do
+    accepted =
+      try do
+        Phoenix.Controller.accepts(conn, ["html"])
+      rescue
+        Phoenix.NotAcceptableError -> nil
+      end
+
+    accepted || raise Phoenix.Router.NoRouteError, conn: conn, router: __MODULE__
   end
 
   # Function plugs preserve runtime dependencies on business code in production too.

@@ -43,8 +43,16 @@ defmodule AnkoleWeb.SiteAdminConsoleTest do
               "/no-such-route"
             ] do
           conn = AnkoleWeb.ConnCase.build_conn() |> put_req_header("accept", accept) |> get(path)
-          body = response(conn, 404)
-          headers = Enum.reject(conn.resp_headers, fn {key, _} -> key == "x-request-id" end)
+
+          # Each response mints its own session cookie, expiry, and CSRF token.
+          body =
+            Regex.replace(~r/(name="csrf-token" content=")[^"]+/, response(conn, 404), "\\1")
+
+          headers =
+            for {key, value} <- conn.resp_headers, key != "x-request-id" do
+              {key, Regex.replace(~r/\A_ankole_key=[^;]+|expires=[^;]+/, value, "")}
+            end
+
           {headers, body}
         end
 

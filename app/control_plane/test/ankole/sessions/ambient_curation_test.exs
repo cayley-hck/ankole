@@ -164,7 +164,7 @@ defmodule Ankole.Sessions.AmbientCurationTest do
              Ankole.Sessions.Admission.admit(
                %{agent_uid: agent.uid, session_id: event.session_id},
                event,
-               now: now
+               now: event.available_at
              )
 
     judgment = Repo.get!(AmbientJudgment, event.id)

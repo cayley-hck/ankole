@@ -75,10 +75,10 @@ defmodule AnkoleWeb.SiteAdminConsole do
   defp rewrite_host(conn, host) do
     cond do
       List.first(conn.path_info) in @route ->
-        raise Phoenix.Router.NoRouteError, conn: conn, router: AnkoleWeb.Router
+        conn
 
       String.downcase(conn.host) == host and not protocol_path?(conn.path_info) ->
-        %{conn | path_info: @route ++ conn.path_info}
+        mounted(conn, conn.path_info)
 
       true ->
         conn
@@ -96,15 +96,16 @@ defmodule AnkoleWeb.SiteAdminConsole do
     mount = String.split(path(), "/", trim: true)
     decoded = Enum.map(conn.path_info, &URI.decode/1)
 
-    cond do
-      Enum.take(decoded, length(mount)) == mount ->
-        %{conn | path_info: @route ++ Enum.drop(decoded, length(mount))}
-
-      Enum.take(decoded, length(@route)) == @route ->
-        raise Phoenix.Router.NoRouteError, conn: conn, router: AnkoleWeb.Router
-
-      true ->
-        conn
-    end
+    if Enum.take(decoded, length(mount)) == mount,
+      do: mounted(conn, Enum.drop(decoded, length(mount))),
+      else: conn
   end
+
+  # Only a request through the configured mount opens the Console. The router
+  # answers its fixed route like an unknown path otherwise (`mounted?/1`).
+  defp mounted(conn, rest),
+    do:
+      Plug.Conn.put_private(%{conn | path_info: @route ++ rest}, :ankole_site_admin_console, true)
+
+  def mounted?(conn), do: Map.get(conn.private, :ankole_site_admin_console, false)
 end

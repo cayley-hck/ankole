@@ -69,7 +69,16 @@ try {
     ),
     'shared'
   )
-  assert.equal(await first.flush(start), '')
+  const firstFlush = await first.flush(start)
+  assert.equal(firstFlush.status, 'flushed')
+  assert.deepEqual(firstFlush.files.map(file => file.path).sort(), [
+    '/drive/AgentDrive/manager-shared.txt',
+    '/drive/ChatDrive/AGENTS.md',
+    '/drive/ChatDrive/DESIGN.md',
+    '/drive/ChatDrive/Skills/local.txt',
+    '/drive/ChatDrive/marker.txt',
+    '/drive/ChatDrive/reports/report.txt'
+  ])
   assert.match(await first.flushPath('/drive/ChatDrive/reports/report.txt'), /^[0-9a-f-]{36}$/)
   assert.equal(await command(first, 'cat /drive/ChatDrive/AGENTS.md'), 'conversation-rules')
   assert.equal(await command(first, 'cat /drive/ChatDrive/DESIGN.md'), 'conversation-design')
@@ -80,7 +89,12 @@ try {
   )
   const secondStart = await second.sequence()
   await command(second, 'printf second > /drive/ChatDrive/marker.txt')
-  assert.equal(await second.flush(secondStart), '')
+  const secondFlush = await second.flush(secondStart)
+  assert.equal(secondFlush.status, 'flushed')
+  assert.deepEqual(
+    secondFlush.files.map(file => file.path),
+    ['/drive/ChatDrive/marker.txt']
+  )
   assert.equal(await command(first, 'cat /drive/ChatDrive/marker.txt'), 'first')
   assert.equal(await command(second, 'cat /drive/ChatDrive/marker.txt'), 'second')
   await mkdir('/workspace', { recursive: true })

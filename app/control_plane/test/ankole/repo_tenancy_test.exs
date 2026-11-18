@@ -66,7 +66,8 @@ defmodule Ankole.RepoTenancyTest do
           assert {:error, _} = create_principal(%{uid: uid, type: :system})
         end
 
-        assert Repo.aggregate(from(p in Principal, where: p.type == :system), :count) == 2
+        assert Repo.aggregate(from(p in Principal, where: p.type == :system), :count) ==
+                 length(Ankole.Principals.SystemServices.uids())
       end)
     end
   end

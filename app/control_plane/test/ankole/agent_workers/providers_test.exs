@@ -7,6 +7,7 @@ defmodule Ankole.AgentWorkers.ProvidersTest do
   alias Ankole.AgentWorkers.Docker
   alias Ankole.AgentWorkers.Kubernetes
   alias Ankole.AgentWorkers.Lambda
+  alias Ankole.AgentWorkers.BootstrapSeed
   alias Ankole.AgentWorkers.ProviderKind
   alias Ankole.AgentWorkers.Providers
   alias Ankole.AgentWorkers.ReconcileJob
@@ -724,12 +725,12 @@ defmodule Ankole.AgentWorkers.ProvidersTest do
       {:error,
        {:worker_providers_seed_failed, {:worker_provider_seed_secret_missing, "adapterToken"}}}
 
-    assert Seed.start_link([]) == missing
+    assert BootstrapSeed.start_link([]) == missing
     System.put_env(variable, "env-token")
-    assert Seed.start_link([]) == missing
+    assert BootstrapSeed.start_link([]) == missing
     refute Repo.exists?(Provider)
     File.write!(token_file, "file-token")
-    assert Seed.start_link([]) == :ignore
+    assert BootstrapSeed.start_link([]) == :ignore
     assert {:ok, %{secrets: %{"adapterToken" => "env-token"}}} = Providers.load("from-env")
     assert {:ok, %{secrets: %{"adapterToken" => "file-token"}}} = Providers.load("from-file")
   end

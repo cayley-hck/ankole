@@ -66,6 +66,14 @@ defmodule Ankole.Brain.PatternsTest do
     assert page.upstream_state["source_node_id"] == context.scope
     assert evidence(page.id) == Enum.take(context.slugs, 3) |> Enum.sort()
 
+    # Patterns skips an audience whose facts have not changed since its last pass.
+    write_fact!(
+      List.last(context.slugs),
+      "Project 4 renewal now follows a shared review.",
+      context.scope,
+      context.owner.uid
+    )
+
     second = pattern(Enum.drop(context.slugs, 1), "Renewal approval now follows a shared review.")
     respond(context.state, [second])
     assert %{status: :ok, pages: 1} = Patterns.run()

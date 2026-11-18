@@ -1,6 +1,6 @@
 # Personal approval inbox
 
-Publish `server/main.js` as the server entry of an Applet page. Each subscriber creates a human-authorized Job for its `inbox` action, with `config.connection` set to the Lark connection slug. The subscriber needs an active Lark employee binding; approval decisions use that employee's verified ID.
+Publish `server/main.js` as the server entry of an Applet page. Each subscriber creates a human-authorized Job for its `inbox` action, with `config.connection` set to the Lark connection slug. The subscriber needs an active Lark employee binding; approval decisions use that employee's verified ID. The Job submits each decision outside a conversation, where Ankole cannot pause for an approval card, so set the connection's approval policy to `none`; under the default `annotations` policy, the destructive `approvals_approve` and `approvals_reject` tools return `approval_unavailable` and the card reports that the decision was not submitted.
 
 Attach a native schedule to the Job to refresh pending tasks. Attach a Signal binding from `connector://AUTH_CONFIG_ID/lark` to the same Job, filtered to `card.action.trigger`. Configure Lark's card callback on the connection's webhook URL, or enable its authenticated long connection. Optionally bind an approval-definition trigger to the Job for immediate refreshes. The page's Job, schedule, and event subscription controls own these resources.
 

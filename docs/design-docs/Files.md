@@ -152,7 +152,9 @@ checks every reference owner that `Ankole.Files.object_references/0` lists:
 Drive nodes, Message and Delivery attachments, Pod resources, page snapshots,
 and profile avatars. In one PostgreSQL transaction it deletes the unreferenced row and
 inserts a site-scoped `DeleteObject` Oban job containing
-the storage key. Composite foreign keys resolve reference/collection races.
+the storage key. The collector locks candidate rows with `SKIP LOCKED`, so it
+passes over an object whose row an attaching transaction holds and leaves it for
+a later run. Composite foreign keys resolve the remaining reference/collection races.
 The job retries byte deletion independently; keys are never reused. Tenant
 cleanup enqueues the same deletion jobs before deleting its object rows.
 

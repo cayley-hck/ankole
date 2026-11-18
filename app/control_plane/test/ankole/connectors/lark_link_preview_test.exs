@@ -22,7 +22,9 @@ defmodule Ankole.Connectors.LarkLinkPreviewTest do
         Application.put_env(:ankole, Config, previous_client_opts)
       end
 
-      ConnectionReconciler.reconcile_once()
+      # The sandbox is gone here, so a reconcile pass cannot see that this
+      # test's connections are undesired; stop them so later tests start clean.
+      Enum.each(ConnectionReconciler.registered_keys(), &ConnectionReconciler.stop/1)
     end)
 
     :ok

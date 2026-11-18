@@ -157,6 +157,8 @@ defmodule Ankole.Connectors.LarkApprovalFlowTest do
         "plugin_id" => "lark",
         "slug" => "approval-inbox",
         "auth_scheme" => "lark_app",
+        # The inbox Job submits the subscriber's card decision without a conversation turn.
+        "public_metadata" => %{"approval" => "none"},
         "secret" => %{
           "appID" => "approval-app",
           "appSecret" => "secret",

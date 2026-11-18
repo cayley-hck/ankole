@@ -139,17 +139,17 @@ defmodule Ankole.FilesConcurrencyIntegrationTest do
     assert parent_id == target_root.id
   end
 
-  test "collection waits for a committing object reference and keeps its bytes", ctx do
+  test "collection skips an object a committing reference holds and keeps its bytes", ctx do
     Repo.update_all(where(FileObject, id: ^ctx.stored.object_id),
       set: [created_at: DateTime.add(DateTime.utc_now(:microsecond), -2, :day)]
     )
 
     writer = hold_transaction(fn -> commit_in_tx(ctx, "retained.txt") end)
+    # The writer still holds the object row, so the collector skips it instead of waiting.
     collector = start_unboxed(fn _parent -> Files.collect_objects() end)
-    assert_blocked_by(collector, writer)
+    assert {:ok, 0} = finish(collector)
     release(writer)
     assert {:ok, _} = finish(writer)
-    assert {:ok, 0} = finish(collector)
 
     assert %FileObject{completed_at: %DateTime{}} =
              Repo.get_by!(FileObject, id: ctx.stored.object_id)

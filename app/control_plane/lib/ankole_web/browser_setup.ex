@@ -668,7 +668,13 @@ defmodule AnkoleWeb.BrowserSetup do
     }
   end
 
-  defp error(_conn, _status, reason) when is_exception(reason), do: {:error, reason}
+  defp error(_conn, status, reason) when is_exception(reason) do
+    # A provider SDK exception is not a Splode error, has no JSON:API rendering, and
+    # would surface as a 500, so the operator sees the provider's own message instead.
+    if function_exported?(reason.__struct__, :splode_error?, 0),
+      do: {:error, reason},
+      else: BrowserAPI.error(status, Exception.message(reason))
+  end
 
   defp error(_conn, _status, {:unsupported_locale, locale}) do
     label = if is_binary(locale) and locale != "", do: locale, else: "invalid"

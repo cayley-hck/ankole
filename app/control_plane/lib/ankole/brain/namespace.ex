@@ -267,7 +267,8 @@ defmodule Ankole.Brain.Namespace do
   @doc "Ensures every tenant has its Brain root, ontology categories, and Agent pages."
   @spec ensure_all_tenants() :: :ok
   def ensure_all_tenants do
-    Enum.each(Ankole.Tenants.list_tenants!(), fn tenant ->
+    # The 1.x upgrade can run on a schema without later Tenant columns, so read only ids.
+    Enum.each(Ankole.Tenants.list_tenants!(query: [select: [:id]]), fn tenant ->
       Repo.with_tenant(tenant.id, fn ->
         {:ok, :ok} =
           Repo.transact_top_level(fn ->

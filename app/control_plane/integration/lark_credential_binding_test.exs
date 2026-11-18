@@ -204,7 +204,10 @@ defmodule Ankole.Authn.LarkCredentialBindingTest do
     reauth = URI.decode_query(URI.parse(path).query)["reauth"]
 
     rejected = complete_lark(entry, %{"reauth" => reauth, "return_to" => "/me"}, "other-code")
-    assert json_response(rejected, 400)["error"] == "login_subject_mismatch"
+
+    assert html_response(rejected, 400) =~
+             ~s(<meta name="ankole-auth-error" content="login_subject_mismatch">)
+
     assert_receive :lark_code_exchanged
     assert [] == Principals.list_external_identities!(query: [filter: [provider: "lark-main"]])
     assert [principal] = Principals.list_principals!(query: [filter: [type: :human]])

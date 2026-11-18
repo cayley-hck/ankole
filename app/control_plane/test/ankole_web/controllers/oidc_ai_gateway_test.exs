@@ -59,17 +59,19 @@ defmodule AnkoleWeb.OIDCAIGatewayTest do
 
     # A request without `model` names no alias for the Client to allow, so no
     # entry may run on a default model.
-    for path <- ~w(audio/speech audio/transcriptions ocr videos audio/music) do
+    for {path, body} <- [
+          {"audio/speech", %{"input" => "hello"}},
+          {"audio/transcriptions",
+           %{"input_audio" => %{"data" => "UklGRg==", "format" => "wav"}}},
+          {"ocr", %{"document" => "data:image/png;base64,iVBORw0="}},
+          {"videos", %{"prompt" => "hello"}},
+          {"audio/music", %{"prompt" => "hello"}}
+        ] do
       response =
         conn
         |> recycle()
         |> bearer(fixture.access_token)
-        |> post("/api/v1/ai-gateway/#{path}", %{
-          "input" => "hello",
-          "prompt" => "hello",
-          "input_audio" => %{"data" => "UklGRg==", "format" => "wav"},
-          "document" => "data:image/png;base64,iVBORw0="
-        })
+        |> post("/api/v1/ai-gateway/#{path}", body)
 
       assert %{"error" => %{"param" => "model"}} = json_response(response, 400)
     end

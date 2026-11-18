@@ -316,7 +316,9 @@ defmodule Ankole.AIGateway.CheckpointContextTest do
     assert_task_memory!(first_checkpoint)
     assert memory_count(second_request.response_context.request["input"]) == 1
     refute Map.has_key?(second.message.metadata, "brain_injection")
-    journal!(context, second.message, "second", 160_000)
+    # The first checkpoint shrank the history, and the conversation then grew
+    # past the trigger again; an unproductive checkpoint would start a cooldown.
+    journal!(context, second.message, "second", 120_000)
 
     assert {:ok, third_request, third} =
              StatefulLifecycle.prepare_websocket_request(

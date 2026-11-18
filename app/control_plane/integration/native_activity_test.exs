@@ -724,7 +724,10 @@ defmodule AnkoleWeb.NativeActivityTest do
     assert optional.data["optional_reply"] == true
     assert %{failure: 0} = Oban.drain_queue(queue: :conversations, with_scheduled: true)
     assert_receive {:empty_reply_request, 3, listening}, 5_000
-    assert Ankole.JSON.encode!(listening) =~ "You can finish with no visible reply."
+
+    assert Ankole.JSON.encode!(listening) =~
+             "you can finish with no visible reply unless a later message addresses you."
+
     await_activity(key, &(&1.state == "settled"))
     refute_receive {:empty_reply_request, 4, _}, 200
     refute_receive {:title_request, _}, 50

@@ -258,48 +258,45 @@ defmodule Ankole.OIDCLogoutIntegrationTest do
 
     endpoint =
       start_upstream_server(fn _ ->
-        send(parent, {:delivery_waiting, self()})
-        receive do: (:finish_delivery -> {:json, 200, %{}})
+        send(parent, :delivered)
+        {:json, 200, %{}}
       end)
 
     {browser, _, _} = authorize(conn, endpoint)
     reference = WebSession.browser_reference(browser)
     {:ok, request} = Ankole.OIDC.RPLogout.prepare(reference, %{})
 
-    confirmation =
-      Task.async(fn ->
-        browser
-        |> recycle()
-        |> post("/oauth/logout/confirm", %{"request" => request.id, "action" => "confirm"})
-      end)
+    # Confirmation commits the logout and queues delivery; the worker delivers later.
+    confirmed =
+      browser
+      |> recycle()
+      |> post("/oauth/logout/confirm", %{"request" => request.id, "action" => "confirm"})
 
-    assert_receive {:delivery_waiting, delivery}, 5_000
+    assert confirmed.status == 302
+    refute_received :delivered
 
-    try do
-      Repo.put_tenant_id(tenant.id)
-      human = human_fixture().principal
+    Repo.put_tenant_id(tenant.id)
+    human = human_fixture().principal
 
-      {:ok, %{authentication: authentication}} =
-        BrowserSessions.authenticate(
-          reference,
-          %{
-            "principal_uid" => human.uid,
-            "access_version" => human.access_version,
-            "provider_id" => "lark-main",
-            "external_id" => human.uid,
-            "auth_time" => System.system_time(:second)
-          }
-        )
+    {:ok, %{authentication: authentication}} =
+      BrowserSessions.authenticate(
+        reference,
+        %{
+          "principal_uid" => human.uid,
+          "access_version" => human.access_version,
+          "provider_id" => "lark-main",
+          "external_id" => human.uid,
+          "auth_time" => System.system_time(:second)
+        }
+      )
 
-      send(delivery, :finish_delivery)
-      assert Task.await(confirmation, 5_000).status == 302
+    [delivery] = Repo.all(LogoutDelivery)
+    assert :ok = Logout.deliver(delivery.id)
+    assert_receive :delivered
 
-      assert BrowserSessions.identity(BrowserSessions.reference(authentication), tenant.id)[
-               "principal_uid"
-             ] == human.uid
-    after
-      send(delivery, :finish_delivery)
-    end
+    assert BrowserSessions.identity(BrowserSessions.reference(authentication), tenant.id)[
+             "principal_uid"
+           ] == human.uid
   end
 
   defp response_cookie(response, fallback) do

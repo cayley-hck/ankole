@@ -101,7 +101,7 @@ defmodule Ankole.Authn.EmailTransportTest do
         code: resent_code
       })
 
-    assert %{"returnTo" => "/site-admin-console"} = api_response(conn, 200)
+    assert api_response(conn, 200)["returnTo"] == console_url()
     assert %{"principal_uid" => uid} = WebSession.site_admin_session(conn)
     assert AuthZ.site_admin?(uid)
     assert Ankole.Repo.with_tenant(tenant.id, fn -> AuthZ.pod_admin?(uid) end)

@@ -230,7 +230,7 @@ defmodule Ankole.Pod.BasesContractTest do
     assert Enum.count(results, &match?({:error, {:field_conflict, _}}, &1)) == 1
   end
 
-  test "query and record writes return not found when purge deletes their table while they wait",
+  test "a query reads its snapshot past a purge while a waiting record write returns not found",
        ctx do
     {:ok, _} =
       Ankole.AppConfigure.put_tenant_by_key(
@@ -288,14 +288,14 @@ defmodule Ankole.Pod.BasesContractTest do
                  end
 
                assert MapSet.size(MapSet.new([holder | backends])) == 3
-               assert_table_operations_blocked(backends, holder)
+               # An inline query reads one REPEATABLE READ snapshot without row locks.
+               assert {:ok, %{records: []}} = Task.await(tasks.query, 5_000)
+               assert_table_operations_blocked([List.last(backends)], holder)
                repo.delete!(table)
                {:ok, tasks}
              end)
 
-    for operation <- [:query, :write] do
-      assert {:error, :not_found} = Task.await(Map.fetch!(tasks, operation), 10_000)
-    end
+    assert {:error, :not_found} = Task.await(tasks.write, 10_000)
   end
 
   @tag timeout: 120_000

@@ -592,7 +592,7 @@ defmodule Ankole.Sessions.WakeRecycleTest do
                  now: t_73h
                )
 
-      assert {:ok, r2} = Admission.admit(key(s2), s2, now: t_73h)
+      assert {:ok, r2} = Admission.admit(key(s2), s2, now: s2.available_at)
       assert r2.conversation.id != r1.conversation.id
       assert r2.conversation.metadata["wake_briefing"]["reason"] == "im_extended_idle"
       assert is_map(r2.conversation.metadata["origin"])
@@ -646,7 +646,7 @@ defmodule Ankole.Sessions.WakeRecycleTest do
                  now: t_75h
                )
 
-      assert {:ok, r3} = Admission.admit(key(s3), s3, now: t_75h)
+      assert {:ok, r3} = Admission.admit(key(s3), s3, now: s3.available_at)
       assert r3.conversation.id == r2.conversation.id
     end
 

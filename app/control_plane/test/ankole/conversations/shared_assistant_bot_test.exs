@@ -70,14 +70,14 @@ defmodule Ankole.Conversations.SharedAssistantBotTest do
     Req.default_options(plug: {Req.Test, __MODULE__})
 
     on_exit(fn ->
-      for {adapter, reconciler} <- [
-            {"lark", Ankole.Plugins.LarkAdapter.ConnectionReconciler},
-            {"slack", Ankole.Plugins.SlackAdapter.ConnectionReconciler}
+      for reconciler <- [
+            Ankole.Plugins.LarkAdapter.ConnectionReconciler,
+            Ankole.Plugins.SlackAdapter.ConnectionReconciler
           ] do
-        # Drain save callbacks before removing the connection and its retry spec.
+        # Drain save callbacks before removing the connections and their retry specs.
+        # The owners are keyed by their connector auth config, not by the app credentials.
         :sys.get_state(reconciler)
-        {:ok, validated} = config_module(adapter).validate_chat_config(config(adapter))
-        :ok = reconciler.stop(config_module(adapter).connection_key(validated))
+        Enum.each(reconciler.registered_keys(), &(:ok = reconciler.stop(&1)))
       end
 
       Req.default_options(previous)

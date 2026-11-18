@@ -42,9 +42,8 @@ defmodule Ankole.Brain.Links do
   end
 
   @doc "Synchronizes typed page references from XML and business metadata."
-  def reconcile_object_links_in_tx(reference) do
-    with {:ok, page} <- Objects.get_by_slug(reference),
-         :ok <- reconcile_metadata_in_tx(page) do
+  def reconcile_object_links_in_tx(%Ankole.Brain.Schemas.Page{} = page) do
+    with :ok <- reconcile_metadata_in_tx(page) do
       targets =
         Ankole.Pod.Pages.Mentions.page_ids(page.xml || "") ++ metadata_references(page.meta)
 

@@ -168,6 +168,12 @@ defmodule AnkoleWeb.SpaController do
     do: conn |> assign(:login_tenant_id, tenant_id) |> render_spa(:sessions)
 
   def console(conn, params) do
+    if AnkoleWeb.SiteAdminConsole.mounted?(conn),
+      do: mounted_console(conn, params),
+      else: not_found(conn, params)
+  end
+
+  defp mounted_console(conn, params) do
     :ok = WebSession.put_privileged_tenant()
     switch? = params["switch"] == "1"
     resolved = if switch?, do: :unauthenticated, else: WebSession.resolve_site_admin_session(conn)

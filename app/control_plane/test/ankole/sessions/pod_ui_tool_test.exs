@@ -39,6 +39,7 @@ defmodule Ankole.Sessions.PodUIToolTest do
     assert "pod_ui_snapshot" in names
     assert "pod_ui_act" in names
     assert "pod_ui_query" in names
+    assert PodUI.declarations(%{run | kind: :scheduled}) == PodUI.declarations(run)
     assert PodUI.declarations(%{run | kind: :ambient}) == []
   end
 
